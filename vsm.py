@@ -1,158 +1,160 @@
-# Part A: 
-# parse each doc from dir
-# for each doc, tokenize doc into words, remove stop words, lowercase each token
+# note: the calculation of idf is 1 + log(N)/(n_k+1) instead of 1 + log(N)/(n_k)
+
+import create_index
 import os
 import string
+import sys
 import math
+from collections import defaultdict
 
 from numpy import zeros
 from numpy import dot
 from numpy.linalg import norm
 
-from nltk.stem import PorterStemmer
-from collections import defaultdict
+# posting index
+posting_index = create_index.posting_index
+# document index
+document_index = create_index.document_index
 
-path = os.getcwd()
-ps = PorterStemmer()
 
-word_freq = defaultdict(int) # count for terms in all documents
-posting_index = dict() # dictionary with key "term" and value (# docs in which term occurs, [posting-list])
-document_index = dict() # dictionary with key "doc id" and value "num of terms in doc"
+# function to calculate cosine similarity between document and query
+def cosineSim(d1, d2):
+  res = float(dot(d1,d2) / (norm(d1) * norm(d2)))
+  return res
+
+
+# function to calculate tfidf score of words in posting_index
+def tfidf_doc(query):
+  # calculate tf-idf for each document
+  tfidf_list = list()
+  posting_list = posting_index[query][1]
+  # iterate every occurence in each document and store the respective tfidf
+  for i in range(len(posting_list)):
+    # get the doc and freq
+    doc = posting_list[i][0]
+    freq = posting_list[i][1]
+    # calculate tf
+    tf = freq / document_index[doc]
+    # calculate idf
+    N = len(document_index)
+    n_k = posting_index[query][0]
+    idf = 1 + math.log(N)/(n_k+1)
+    # calculate tf-idf
+    tfidf = tf * idf
+    tfidf_list.append((doc, tfidf))
+  return tfidf_list
+
+
+# function to calculate tfidf score of words in query
+def tfidf_query(word, query):
+  cnt = defaultdict(int)
+  for q in query:
+    cnt[q] += 1
+  # calculate tf
+  tf = cnt[word] / len(query)
+  # calculate idf
+  N = len(document_index)
+  n_k = posting_index[word][0]
+  idf = 1 + math.log(N)/(n_k+1)
+  # calculate tf-idf
+  tfidf = tf * idf
+  return tfidf
 
 # main
-def main():
-  # prompt user for a directory
-  createIndex("\\data\\ap89_collection")
+user_path = os.getcwd() # get current path
 
-  # prompt user for a term
-  print("Please enter a query: ", end="")
-  query = input()
-  termLookup(query)
+path = sys.argv[1] # directory
+f = sys.argv[2] # query list
+result = sys.argv[3] # write to result
 
-# each doc begins with <doc> ends with </doc>
-# doc id: <DOCNO>
-# text processed: <text> </text>
-def createIndex(directory):
-  doc_start = False
-  doc_number = False
-  text_start = False
+# delete existing result file if exists
+if os.path.exists(user_path + "\\" + result):
+  os.remove(result)
 
-  with open('stoplist.txt') as f1:
-    stop_words = f1.read()
-    # define new path
-    new_path = path + directory
-    # open ap89_collection
-    with open(new_path, "r") as f:
-      # split words
-      words = [word for line in f for word in line.split()]
-      for word in words:
-        # check <DOC>
-        if word == "<DOC>":
-          # initialize variables for the doc
-          doc_start = True
-          docID_freq = defaultdict(int) # temporary dictionary for posting-list
-          num_terms_in_doc = 0  # count no. of terms in doc
-          word_freq_in_cur_doc = defaultdict(int) # term frequency count for each file
-          continue
-        # check <DOCNO>
-        if word == "<DOCNO>":
-          doc_number = True
-          continue
-        # if doc_number is True, filename = doc_id
-        if doc_number:
-          fn = word
-          # done with doc_id
-          doc_number = False
-          continue
-        # check <text>
-        if word == "<TEXT>":
-          text_start = True
-          continue
-        # check </text>
-        if word == "</TEXT>":
-          text_start = False
-          continue        
-        # check </DOC>
-        if word == "</DOC>":
-          doc_start = False
-        
-        if text_start:
-          # one liner to remove punctuation and lowercase each token            
-          word = word.translate(str.maketrans('', '', string.punctuation)).lower()
-          # check if word is a stop word and any numbers in string
-          if word not in stop_words and not any(str.isdigit(c) for c in word):
-            num_terms_in_doc += 1
-            # apply stemming
-            word = ps.stem(word)
-            docID_freq[word] += 1
+full_path = user_path + "\\" + path + "\\" + f
 
-            if word in word_freq:
-              # word has appeared before, just increment counters
-              word_freq[word] += 1
-              word_freq_in_cur_doc[word] += 1
-            else:
-              # initialize values of counters 
-              word_freq[word] = 1
-              word_freq_in_cur_doc[word] = 1
-              posting_index[word] = (1, list())
-        
-        if not doc_start:
-          # after all words within <DOC> </DOC> are counted 
-          document_index[fn] = num_terms_in_doc
-          for term in docID_freq.keys():
-            posting_index_list = posting_index[term][1] # a list which contains tuples of doc id and freq of word in doc
-            posting_index_list.append((fn, word_freq_in_cur_doc[term])) # append doc id and freq of word in doc
-          
-  # count the total number of items in posting_index
-  for term in posting_index.keys():
-    doc_cnt = posting_index[term][1]
-    # reset the value of "num docs in which term occurs" as number of items in the list
-    posting_index[term] = (len(doc_cnt), posting_index[term][1])
+# array of vectors for documents
+docs_vec = list()
+# dictonary for mapping document number
+doc_num_dict1 = dict()
+# dictionary for mapping reverse documenr number
+doc_num_dict2 = dict()
+# create vector for each doc
+for i in range(len(document_index)):
+  docs_vec.append([0] * len(posting_index))
+  # map doc num to index and vice versa
+  doc_num_dict1[list(document_index)[i]] = i
+  doc_num_dict2[i] = list(document_index)[i]
 
-def termLookup(query):
-  # print tf-idf of query for each doc
-  # if term not found, print "No Match"
+# process queries
+queries = create_index.processQueries(full_path)
 
-  # one liner to remove punctuation and lowercase each token            
-  word = query.translate(str.maketrans('', '', string.punctuation)).lower()
-  # apply stemming
-  word = ps.stem(word)
+# dictionary for identifying word
+key_dict = dict()
+# map key in posting index to numbers
+idx = 0
+for key in posting_index:
+  key_dict[key] = idx
+  idx += 1
+ 
+# process each word in posting_index, calculate the tfidf and fill in the vector of respective document
+for key in posting_index:
+  tfidf_list = tfidf_doc(key)
+  idx = key_dict[key]
+  for tup in tfidf_list:
+    # tup[0]: document id
+    # doc_num_dict1[tup[0]]: document number
+    # docs_vec[doc_num_dict1[tup[0]]][idx]: tfidf score of key at document
+    docs_vec[doc_num_dict1[tup[0]]][idx] = tup[1]
 
-  # check if query in posting_index
-  if word in posting_index.keys():
-    # calculate tf-idf
-    # first calculate term frequency tf in each document
-    for doc in document_index.keys():
-      freq = 0
-      posting_list = posting_index[query][1]
-      # find doc id
-      for i in range(len(posting_list)):
-        if posting_list[i][0] == doc:
-          # found doc id, just need the freq
-          freq = posting_list[i][1]
-          break
-      # calculate tf
-      tf = freq / document_index[doc]
-      # now calculate idf
-      N = len(document_index)
-      n_k = posting_index[query][0]
-      idf = 1 + math.log(N)/(n_k+1)
-      # calculate tf-idf
-      tfidf = tf * idf
-      print("TF-IDF for", doc, "is", tfidf)
-  else:
-    # no match
-    print("No Match")
+# compare document vector and query vector
+with open('stoplist.txt') as f1:
+  stop_words = f1.read()
+  for query in queries:
+    # create new query vector
+    v = [0] * len(posting_index)
+    # check if query is a number
+    first = True
+    # remove all stopwords, remove punctuation, lowercase and stem the word first
+    new_query = list()
+    # check if number is a query number
+    first = True
+    # get rid of redundant words from query
+    for q in query:
+      if any(str.isdigit(c) for c in q) and first:
+        # query number
+        q_num = q.rstrip('.') # remove the period
+        first = False
+      elif q not in stop_words and not any(str.isdigit(c) for c in q):
+        # word preprocessing
+        q = create_index.remove_punctuation_lowercase(q)
+        q = create_index.stemming(q)
+        new_query.append(q)
+    # process new query
+    for q in new_query:
+      if q in key_dict:
+        tfidf = tfidf_query(q, new_query)
+        idx = key_dict[q]
+        lst = posting_index[q][1]
+        for tup in lst:
+          # tup[0]: document id
+          v[idx] = tfidf
+    # calculate cosine sim score for each doc
+    scores = list()
+    for idx, vec in enumerate(docs_vec):
+      score = cosineSim(v, vec)
+      scores.append((score, doc_num_dict2[idx]))
+    scores = sorted(scores, reverse=True)
 
-def removeStopWords(list):
-  pass
-
-def cosineSim(d1, d2):
-  v1 = docVec(d1)
-  v2 = docVec(d2)
-  return float(dot(v1,v2) / (norm(v1) * norm(v2)))
-
-
-
-if __name__ == "__main__":
-  main()
+    # only top 20 results are needed
+    max_scores = 20
+    cnt = 0
+    for score, doc_no in scores:
+      if score > 0.0 and cnt < max_scores:
+        # write result to file
+        # <query number> Q0 <docno> <rank> <score> Exp
+        cnt += 1
+        with open("result_vsm.txt", "a") as myfile:
+          myfile.write(q_num + " Q0 " + doc_no + " " + str(cnt) + " " + str(score) + " Exp\n")
+      else:
+        break
