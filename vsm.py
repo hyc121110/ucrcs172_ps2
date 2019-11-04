@@ -7,7 +7,6 @@ import sys
 import math
 from collections import defaultdict
 
-from numpy import zeros
 from numpy import dot
 from numpy.linalg import norm
 
@@ -60,18 +59,56 @@ def tfidf_query(word, query):
   tfidf = tf * idf
   return tfidf
 
+# function returning tfidf vector of the query
+def generate_tfidf_vector(query):
+  # create new query vector
+  v = [0] * len(posting_index)
+  # process new query
+  for q in query:
+    if q in key_dict:
+      tfidf = tfidf_query(q, query)
+      idx = key_dict[q]
+      lst = posting_index[q][1]
+      for tup in lst:
+        # tup[0]: document id
+        v[idx] = tfidf
+  return v
+
+# function to preprocess word
+def word_preprocessing(q):
+  if q not in stop_words and not any(str.isdigit(c) for c in q):
+    # word preprocessing
+    q = create_index.remove_punctuation_lowercase(q)
+    q = create_index.stemming(q)
+    return q
+  # return empty string if not satisfy
+  return ""
+
+# function return cosine similarity score between query and documents
+def cos_sim_score(v):
+  scores = list()
+  for idx, vec in enumerate(docs_vec):
+    score = cosineSim(v, vec)
+    scores.append((score, doc_num_dict2[idx]))
+  
+  return scores
+
 # main
 user_path = os.getcwd() # get current path
 
-path = sys.argv[1] # directory
-f = sys.argv[2] # query list
-result = sys.argv[3] # write to result
+# specify arguments
+if len(sys.argv) > 1:
+  path = sys.argv[1] # directory
+  f = sys.argv[2] # query list
+  result_f = sys.argv[3] # write to result
+  full_path = user_path + "\\" + path + "\\" + f
 
-# delete existing result file if exists
-if os.path.exists(user_path + "\\" + result):
-  os.remove(result)
+  # delete existing result file if exists
+  if os.path.exists(user_path + "\\" + result_f):
+    os.remove(result_f)
 
-full_path = user_path + "\\" + path + "\\" + f
+  # process queries
+  queries = create_index.processQueries(full_path)
 
 # array of vectors for documents
 docs_vec = list()
@@ -85,9 +122,6 @@ for i in range(len(document_index)):
   # map doc num to index and vice versa
   doc_num_dict1[list(document_index)[i]] = i
   doc_num_dict2[i] = list(document_index)[i]
-
-# process queries
-queries = create_index.processQueries(full_path)
 
 # dictionary for identifying word
 key_dict = dict()
@@ -110,51 +144,41 @@ for key in posting_index:
 # compare document vector and query vector
 with open('stoplist.txt') as f1:
   stop_words = f1.read()
-  for query in queries:
-    # create new query vector
-    v = [0] * len(posting_index)
-    # check if query is a number
-    first = True
-    # remove all stopwords, remove punctuation, lowercase and stem the word first
-    new_query = list()
-    # check if number is a query number
-    first = True
-    # get rid of redundant words from query
-    for q in query:
-      if any(str.isdigit(c) for c in q) and first:
-        # query number
-        q_num = q.rstrip('.') # remove the period
-        first = False
-      elif q not in stop_words and not any(str.isdigit(c) for c in q):
-        # word preprocessing
-        q = create_index.remove_punctuation_lowercase(q)
-        q = create_index.stemming(q)
-        new_query.append(q)
-    # process new query
-    for q in new_query:
-      if q in key_dict:
-        tfidf = tfidf_query(q, new_query)
-        idx = key_dict[q]
-        lst = posting_index[q][1]
-        for tup in lst:
-          # tup[0]: document id
-          v[idx] = tfidf
-    # calculate cosine sim score for each doc
-    scores = list()
-    for idx, vec in enumerate(docs_vec):
-      score = cosineSim(v, vec)
-      scores.append((score, doc_num_dict2[idx]))
-    scores = sorted(scores, reverse=True)
+  if len(sys.argv) > 1:
+    for query in queries:
+      # check if query is a number
+      first = True
+      # remove all stopwords, remove punctuation, lowercase and stem the word first
+      new_query = list()
+      # get rid of redundant words from query
+      for idx, q in enumerate(query):
+        if any(str.isdigit(c) for c in q) and idx == 0:
+          # query number
+          q_num = q.rstrip('.') # remove the period
+          first = False
+        else:
+          # word preprocessing
+          q = word_preprocessing(q)
+          if q:
+            new_query.append(q)
 
-    # only top 20 results are needed
-    max_scores = 20
-    cnt = 0
-    for score, doc_no in scores:
-      if score > 0.0 and cnt < max_scores:
-        # write result to file
-        # <query number> Q0 <docno> <rank> <score> Exp
-        cnt += 1
-        with open("result_vsm.txt", "a") as myfile:
-          myfile.write(q_num + " Q0 " + doc_no + " " + str(cnt) + " " + str(score) + " Exp\n")
-      else:
-        break
+      v = generate_tfidf_vector(new_query)
+      # calculate cosine sim score for each doc
+      scores = cos_sim_score(v)
+      # sort scores in descending order
+      scores = sorted(scores, reverse=True)
+
+      # only write to file when arguments are specified
+      # only top 20 results are needed
+      if len(sys.argv) > 1:
+        max_scores = 50
+        cnt = 0
+        for score, doc_no in scores:
+          if score > 0.0 and cnt < max_scores:
+            # write result to file
+            # <query number> Q0 <docno> <rank> <score> Exp
+            cnt += 1
+            with open(result_f, "a") as myfile:
+              myfile.write(q_num + " Q0 " + doc_no + " " + str(cnt) + " " + str(score) + " Exp\n")
+          else:
+            break  

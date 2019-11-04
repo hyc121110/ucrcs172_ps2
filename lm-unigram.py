@@ -11,15 +11,15 @@ document_index = create_index.document_index
 # main
 user_path = os.getcwd() # get current path
 
+# specify arguments
 path = sys.argv[1] # directory
 f = sys.argv[2] # query list
-result = sys.argv[3] # write to result
+result_f = sys.argv[3] # write to result
+full_path = user_path + "\\" + path + "\\" + f
 
 # delete existing result file if exists
-if os.path.exists(user_path + "\\" + result):
-  os.remove(result)
-
-full_path = user_path + "\\" + path + "\\" + f
+if os.path.exists(user_path + "\\" + result_f):
+  os.remove(result_f)
 
 # process queries
 queries = create_index.processQueries(full_path)
@@ -41,6 +41,16 @@ def p_laplace(word, doc):
 
   return numerator / denominator
 
+# function to preprocess word
+def word_preprocessing(q):
+  if q not in stop_words and not any(str.isdigit(c) for c in q):
+    # word preprocessing
+    q = create_index.remove_punctuation_lowercase(q)
+    q = create_index.stemming(q)
+    return q
+  # return empty string if not satisfy
+  return ""
+
 # a list to track probabilities 
 docs_prob = list()
 
@@ -55,33 +65,36 @@ with open('stoplist.txt') as f1:
     # check if number is a query number
     first = True
     # get rid of redundant words from query
-    for q in query:
-      if any(str.isdigit(c) for c in q) and first:
+    for idx, q in enumerate(query):
+      if any(str.isdigit(c) for c in q) and idx == 0:
         # query number
         q_num = q.rstrip('.') # remove the period
         first = False
-      elif q not in stop_words and not any(str.isdigit(c) for c in q):
+      else:
         # word preprocessing
-        q = create_index.remove_punctuation_lowercase(q)
-        q = create_index.stemming(q)
-        new_query.append(q)
+        q = word_preprocessing(q)
+        if q:
+          new_query.append(q)
+    
+    # laplace smoothing
     scores = list()
     for doc in document_index:
       score = 0
       for q in new_query:
         score += math.log(p_laplace(q, doc))
       scores.append((score, doc))
+    # sort scores in descending order
     scores = sorted(scores, reverse=True)
 
     # only top 20 results are needed
-    max_scores = 20
+    max_scores = 50
     cnt = 0
     for score, doc_no in scores:
       if cnt < max_scores:
         # write result to file
         # <query number> Q0 <docno> <rank> <score> Exp
         cnt += 1
-        with open("result_lm.txt", "a") as myfile:
+        with open(result_f, "a") as myfile:
           myfile.write(q_num + " Q0 " + doc_no + " " + str(cnt) + " " + str(score) + " Exp\n")
       else:
         break
