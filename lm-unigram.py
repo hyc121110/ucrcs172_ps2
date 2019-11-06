@@ -7,6 +7,8 @@ import math
 posting_index = create_index.posting_index
 # document index
 document_index = create_index.document_index
+# word freq
+unique_words = create_index.unique_words
 
 # main
 user_path = os.getcwd() # get current path
@@ -26,7 +28,7 @@ queries = create_index.processQueries(full_path)
 
 # function calculating p_laplace, returning lists of ps and doc number
 def p_laplace(word, doc):
-  # formula: (tf + 1) / len(d) + V
+  # formula: (tf + 1) / (len(d) + V)
   tf = 0
   # find doc number in posting index. If word not found, freq = 0
   if word in posting_index:
@@ -37,7 +39,8 @@ def p_laplace(word, doc):
         break
 
   numerator = tf + 1
-  denominator = document_index[doc] + len(posting_index)
+  # V: unique terms in one document
+  denominator = document_index[doc] + len(unique_words)
 
   return numerator / denominator
 
