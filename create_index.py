@@ -14,6 +14,7 @@ path = os.getcwd()
 word_freq = defaultdict(int) # count for terms in all documents
 posting_index = dict() # dictionary with key "term" and value (# docs in which term occurs, [posting-list])
 document_index = dict() # dictionary with key "doc id" and value "num of terms in doc"
+unique_words = defaultdict(int) # dictionary keeping track of number of unique words in a document
 
 # Part 1
 # each doc begins with <doc> ends with </doc>
@@ -40,6 +41,7 @@ def createIndex(directory):
           docID_freq = defaultdict(int) # temporary dictionary for posting-list
           num_terms_in_doc = 0  # count no. of terms in doc
           word_freq_in_cur_doc = defaultdict(int) # term frequency count for each file
+          unique_words_in_cur_doc = defaultdict(int) # temp dictionary for unique words
           continue
         # check <DOCNO>
         if word == "<DOCNO>":
@@ -83,10 +85,13 @@ def createIndex(directory):
               word_freq[word] = 1
               word_freq_in_cur_doc[word] = 1
               posting_index[word] = (1, list())
+            if unique_words_in_cur_doc[word] == 0:
+              unique_words_in_cur_doc[word] += 1
         
         if not doc_start:
           # after all words within <DOC> </DOC> are counted 
           document_index[fn] = num_terms_in_doc
+          unique_words[fn] = len(unique_words_in_cur_doc)
           for term in docID_freq.keys():
             posting_index_list = posting_index[term][1] # a list which contains tuples of doc id and freq of word in doc
             posting_index_list.append((fn, word_freq_in_cur_doc[term])) # append doc id and freq of word in doc
